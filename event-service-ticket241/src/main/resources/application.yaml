@@ -1,6 +1,8 @@
 spring:
   application:
     name: event-service-ticket241
+  kafka:
+    enabled: false
   datasource:
     url: jdbc:postgresql://localhost:5432/event_service_db
     username: postgres
@@ -24,3 +26,32 @@ eureka:
         http://localhost:8781/eureka/
 
 
+kafka:
+  bootstrap-servers: localhost:9092
+
+  # Configuration Producer
+  producer:
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    properties:
+      spring.json.add.type.headers: false
+    acks: all
+    retries: 3
+
+  # Configuration Consumer
+  consumer:
+    group-id: event-service-group
+    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+    properties:
+      spring.json.trusted.packages: "*"
+      spring.json.type.mapping: >
+        TicketReservedEvent:com.tchelo.event_service_ticket241.kafka.event.TicketReservedEvent,
+        TicketCancelledEvent:com.tchelo.event_service_ticket241.kafka.event.TicketCancelledEvent,
+        ReservationExpiredEvent:com.tchelo.event_service_ticket241.kafka.event.ReservationExpiredEvent
+    auto-offset-reset: earliest
+    enable-auto-commit: false
+
+  # Configuration Listener
+  listener:
+    ack-mode: manual

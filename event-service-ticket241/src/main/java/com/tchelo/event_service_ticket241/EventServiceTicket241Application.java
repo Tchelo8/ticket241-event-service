@@ -2,8 +2,10 @@ package com.tchelo.event_service_ticket241;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.kafka.annotation.EnableKafka;
 
 @SpringBootApplication
+@EnableKafka
 //plus besoin de mettre le @EnableEurekaClient comme dans les anc vrs ici car le .yml le rends déjà en compte
 public class EventServiceTicket241Application {
 

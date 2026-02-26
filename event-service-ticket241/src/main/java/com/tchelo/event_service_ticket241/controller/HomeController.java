@@ -10,7 +10,7 @@ public class HomeController {
 
     @GetMapping( "/hello")
     public String SayHello(){
-        return "Bienvenu sur le service d'évènements";
+        return "Bienvenu sur le service d'évènements de la plateforme Ticket241";
     }
 
 

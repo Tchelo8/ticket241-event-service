@@ -1,8 +1,8 @@
 package com.tchelo.event_service_ticket241.mapper;
 
 
-import com.tchelo.event_service_ticket241.dto.StructureRequestDTO;
-import com.tchelo.event_service_ticket241.dto.StructureResponseDTO;
+import com.tchelo.event_service_ticket241.dto.request.StructureRequestDTO;
+import com.tchelo.event_service_ticket241.dto.response.StructureResponseDTO;
 import com.tchelo.event_service_ticket241.entity.Structure;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;

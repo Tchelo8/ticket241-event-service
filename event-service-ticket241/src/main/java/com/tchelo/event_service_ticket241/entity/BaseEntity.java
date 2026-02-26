@@ -28,6 +28,6 @@ public abstract class BaseEntity {
     @UpdateTimestamp
     protected LocalDateTime updatedAt;
 
-    private Boolean status = false;
+    private Boolean status = true;
     protected Boolean isArchived = false;
 }

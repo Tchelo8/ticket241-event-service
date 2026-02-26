@@ -1,4 +1,4 @@
-package com.tchelo.event_service_ticket241.dto;
+package com.tchelo.event_service_ticket241.dto.response;
 
 import lombok.Getter;
 import lombok.Setter;
