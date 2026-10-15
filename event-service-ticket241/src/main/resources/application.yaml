@@ -4,7 +4,8 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/event_service_db
     username: postgres
-    password: azerty
+    # Secret : variable d'environnement ou fichier local config/application.yaml (voir config/secrets.example.yaml)
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:

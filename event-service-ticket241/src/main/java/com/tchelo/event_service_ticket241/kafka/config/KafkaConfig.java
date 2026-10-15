@@ -1,5 +1,6 @@
 package com.tchelo.event_service_ticket241.kafka.config;
 
+import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.serializer.JsonSerializer;
@@ -36,6 +38,15 @@ public class KafkaConfig {
     @Bean
     public KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
         return new KafkaTemplate<>(producerFactory);
+    }
+
+    // Spring Boot 4 sans spring-boot-starter-kafka ne crée pas de KafkaAdmin : sans lui, les NewTopic
+    // ci-dessous n'étaient jamais créés (Kafka les créait à la volée avec une seule partition)
+    @Bean
+    public KafkaAdmin kafkaAdmin() {
+        Map<String, Object> config = new HashMap<>();
+        config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        return new KafkaAdmin(config);
     }
 
     @Bean

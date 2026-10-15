@@ -8,7 +8,8 @@ services:
     environment:
       POSTGRES_DB: event_service_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: azerty
+      # Fourni par la variable d'environnement DB_PASSWORD (ou un fichier .env non versionné à côté de ce fichier)
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Définir DB_PASSWORD (même valeur que pour event-service)}
     volumes:
       - event_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
