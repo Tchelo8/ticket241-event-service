@@ -1,6 +1,5 @@
 package com.tchelo.event_service_ticket241.dto.request;
 
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.entity.enums.ValidationMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -28,7 +27,7 @@ public class CreateEventDto {
     private String fullDescription;
 
     @NotNull(message = "La catégorie est obligatoire")
-    private EventCategory category;
+    private Long categoryId;
 
     @Size(max = 100, message = "La sous-catégorie ne peut pas dépasser 100 caractères")
     private String subCategory;

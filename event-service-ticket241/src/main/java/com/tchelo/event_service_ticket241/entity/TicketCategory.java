@@ -115,35 +115,50 @@ public class TicketCategory extends BaseEntity {
         }
     }
 
-    // fonction pour lz reservation des places
+    // Les 4 mouvements de places possibles. Chacun vérifie qu'il ne rend aucun compteur négatif,
+    // puis recalcule availableSeats à partir des compteurs (jamais d'incrément "à la main" qui
+    // pourrait dériver) : disponibles = total - vendues - réservées.
+
+    // Réservation pendant la commande (avant paiement)
     public void reserveSeats(int quantity) {
         if (!hasAvailableSeats(quantity)) {
-            throw new IllegalStateException("Pas assez de places disponibles dans la catégorie " + this.name);
+            throw new IllegalStateException(String.format(
+                    "Pas assez de places disponibles dans la catégorie %s (disponibles : %d, demandées : %d)",
+                    this.name, this.availableSeats, quantity));
         }
         this.reservedSeats += quantity;
-        this.availableSeats -= quantity;
+        recalculateAvailableSeats();
     }
 
-
-    //Confirme la vente après le paiement via airtel ou moov money
+    // Confirme la vente après le paiement via airtel ou moov money : réservées → vendues
     public void confirmSale(int quantity) {
+        if (this.reservedSeats < quantity) {
+            throw new IllegalStateException("Impossible de confirmer plus de places que réservées dans " + this.name);
+        }
         this.reservedSeats -= quantity;
         this.soldSeats += quantity;
+        recalculateAvailableSeats();
     }
 
-    // fonction pour annuler une réservation
+    // Libère des places réservées (réservation expirée ou annulée avant paiement)
     public void cancelReservation(int quantity) {
+        if (this.reservedSeats < quantity) {
+            throw new IllegalStateException("Impossible de libérer plus de places que réservées dans " + this.name);
+        }
         this.reservedSeats -= quantity;
-        this.availableSeats += quantity;
+        recalculateAvailableSeats();
     }
 
-
-
+    // Libère des places vendues (billet payé puis annulé)
     public void cancelSale(int quantity) {
         if (this.soldSeats < quantity) {
-            throw new IllegalStateException("Impossible d'annuler plus de tickets que vendu");
+            throw new IllegalStateException("Impossible d'annuler plus de tickets que vendu dans " + this.name);
         }
         this.soldSeats -= quantity;
-        this.availableSeats += quantity;
+        recalculateAvailableSeats();
+    }
+
+    private void recalculateAvailableSeats() {
+        this.availableSeats = this.totalSeats - this.soldSeats - this.reservedSeats;
     }
 }

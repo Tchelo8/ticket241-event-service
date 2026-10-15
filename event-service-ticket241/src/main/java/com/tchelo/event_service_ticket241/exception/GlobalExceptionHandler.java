@@ -93,6 +93,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
+    @ExceptionHandler(CategoryNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleCategoryNotFound(
+            CategoryNotFoundException ex,
+            HttpServletRequest request
+    ) {
+        log.error("Catégorie non trouvée sur Ticket241: {}", ex.getMessage());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", HttpStatus.NOT_FOUND.value());
+        response.put("message", ex.getMessage());
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
    //gère les accès non autorisés
     @ExceptionHandler(UnauthorizedAccesException.class)
     public ResponseEntity<Map<String, Object>> handleUnauthorizedAccess(

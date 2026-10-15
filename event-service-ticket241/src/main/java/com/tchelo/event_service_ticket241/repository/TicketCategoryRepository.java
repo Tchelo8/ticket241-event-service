@@ -1,6 +1,8 @@
 package com.tchelo.event_service_ticket241.repository;
 import com.tchelo.event_service_ticket241.entity.TicketCategory;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -30,4 +32,13 @@ public interface TicketCategoryRepository extends JpaRepository<TicketCategory, 
     // addition des places disponibles pour un événement
     @Query("SELECT COALESCE(SUM(tc.availableSeats), 0) FROM TicketCategory tc WHERE tc.event.id = :eventId AND tc.isActive = true")
     Integer sumAvailableSeatsByEventId(@Param("eventId") Long eventId);
+
+    // Événement d'une catégorie, sans charger l'entité : sert à verrouiller l'événement AVANT la catégorie
+    @Query("SELECT tc.event.id FROM TicketCategory tc WHERE tc.id = :categoryId")
+    Optional<Long> findEventIdByCategoryId(@Param("categoryId") Long categoryId);
+
+    // Lecture verrouillée pour les mouvements de places (toujours après le verrou de l'événement)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT tc FROM TicketCategory tc WHERE tc.id = :categoryId")
+    Optional<TicketCategory> findByIdForUpdate(@Param("categoryId") Long categoryId);
 }

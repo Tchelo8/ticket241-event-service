@@ -1,6 +1,5 @@
 package com.tchelo.event_service_ticket241.dto.response;
 
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.entity.enums.EventStatus;
 import com.tchelo.event_service_ticket241.entity.enums.ValidationMode;
 import lombok.AllArgsConstructor;
@@ -26,7 +25,9 @@ public class EventResponseDto {
     private String slug;
     private String fullDescription;
 
-    private EventCategory category;
+    private Long categoryId;
+    private String category;
+    private String categoryDisplayName;
     private String subCategory;
 
     private LocalDateTime startDate;
@@ -58,7 +59,7 @@ public class EventResponseDto {
 
     private String coverImageUrl;
 
-    private EventStatus status;
+    private EventStatus eventStatus;
     private Boolean isFeatured;
     private Boolean isPromoted;
     private Boolean isOnline;
@@ -91,6 +92,7 @@ public class EventResponseDto {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Boolean isCancelled;
 
     // Liste des catégories de tickets
     @Builder.Default
@@ -98,6 +100,8 @@ public class EventResponseDto {
 
     // Informations calculées
     private Boolean isSaleOpen;
+    // null si on peut réserver, sinon la raison (copié depuis Event.getSaleClosedReason())
+    private String saleClosedReason;
     private Boolean isPastEvent;
     private Boolean isSoldOut;
 }

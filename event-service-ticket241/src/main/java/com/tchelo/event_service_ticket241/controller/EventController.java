@@ -5,7 +5,6 @@ import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
 import com.tchelo.event_service_ticket241.dto.response.TicketCategoryResponseDto;
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.service.EventService;
 import com.tchelo.event_service_ticket241.service.TicketCategoryService;
 import jakarta.validation.Valid;
@@ -69,17 +68,32 @@ public class EventController {
     @GetMapping("/slug/{slug}")
     public ResponseEntity<EventResponseDto> getEventBySlug(@PathVariable String slug) {
         log.info("Récupération de l'événement par slug : {}", slug);
-
         EventResponseDto event = eventService.getEventBySlug(slug);
-
         eventService.incrementViewCount(event.getUuid());
+        return ResponseEntity.ok(event);
+    }
 
+    // Incrémentation explicite des vues, pour le front qui affiche le détail depuis un objet déjà en mémoire (sans refetch)
+    @PostMapping("/{uuid}/view")
+    public ResponseEntity<Void> incrementViewCount(@PathVariable String uuid) {
+        log.info("Incrémentation des vues de l'événement : {}", uuid);
+
+        eventService.incrementViewCount(uuid);
+
+        return ResponseEntity.ok().build();
+    }
+
+    //route sans incrémentation de vues pour les admins des structures
+    @GetMapping("/admin/slug/{slug}")
+    public ResponseEntity<EventResponseDto> getEventBySlugForAdmin(@PathVariable String slug) {
+        log.info("Récupération admin de l'événement par slug : {}", slug);
+        EventResponseDto event = eventService.getEventBySlug(slug);
         return ResponseEntity.ok(event);
     }
 
     @GetMapping("/category/{category}")
     public ResponseEntity<Page<EventSummaryDto>> getEventsByCategory(
-            @PathVariable EventCategory category,
+            @PathVariable String category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
@@ -181,7 +195,7 @@ public class EventController {
         return ResponseEntity.ok(updatedEvent);
     }
 
-    @DeleteMapping("/{uuid}")
+    @DeleteMapping("/delete/{uuid}")
     public ResponseEntity<Map<String, String>> deleteEvent(
             @PathVariable String uuid,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
@@ -234,7 +248,7 @@ public class EventController {
     }
 
     @GetMapping("/structure/{structureId}")
-    public ResponseEntity<Page<EventSummaryDto>> getEventsByStructure(
+    public ResponseEntity<Page<EventResponseDto>> getEventsByStructure(
             @PathVariable Long structureId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
@@ -242,7 +256,7 @@ public class EventController {
         log.info("Récupération des événements de la structure : {}", structureId);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<EventSummaryDto> events = eventService.getEventsByStructure(structureId, pageable);
+        Page<EventResponseDto> events = eventService.getEventsByStructure(structureId, pageable);
 
         return ResponseEntity.ok(events);
     }
@@ -282,7 +296,7 @@ public class EventController {
     ) {
         log.info("Requête catégorie {} pour événement {}", categoryId, eventId);
 
-        TicketCategoryResponseDto response = ticketCategoryService.getCategoryById(categoryId);
+        TicketCategoryResponseDto response = ticketCategoryService.getCategoryForEvent(eventId, categoryId);
 
         return ResponseEntity.ok(response);
     }
@@ -296,36 +310,12 @@ public class EventController {
     ) {
         log.info("Vérification disponibilité : {} places pour catégorie {}", quantity, categoryId);
 
-        Boolean isAvailable = ticketCategoryService.checkAvailability(categoryId, quantity);
+        Boolean isAvailable = ticketCategoryService.checkAvailability(eventId, categoryId, quantity);
 
         return ResponseEntity.ok(isAvailable);
     }
 
-    // Décrémenter les places disponibles route configuréé à être appelé qu'après paiement confirmé
-    @PostMapping("/{eventId}/categories/{categoryId}/decrease-seats")
-    public ResponseEntity<Void> decreaseAvailableSeats(
-            @PathVariable Long eventId,
-            @PathVariable Long categoryId,
-            @RequestParam Integer quantity
-    ) {
-        log.info("Décrémentation de {} places pour catégorie {}", quantity, categoryId);
-
-        ticketCategoryService.decreaseAvailableSeats(categoryId, quantity);
-
-        return ResponseEntity.ok().build();
-    }
-
-    // Incrémenter les places disponibles (te config à être appelé après annulation 'un ticket ou d'une reservation
-    @PostMapping("/{eventId}/categories/{categoryId}/increase-seats")
-    public ResponseEntity<Void> increaseAvailableSeats(
-            @PathVariable Long eventId,
-            @PathVariable Long categoryId,
-            @RequestParam Integer quantity
-    ) {
-        log.info("Incrémentation de {} places pour catégorie {}", quantity, categoryId);
-
-        ticketCategoryService.increaseAvailableSeats(categoryId, quantity);
-
-        return ResponseEntity.ok().build();
-    }
+    // Les places ne se modifient plus par REST (les anciens decrease-seats / increase-seats étaient
+    // appelables par n'importe quel utilisateur connecté) : réservation, vente et libération passent
+    // uniquement par les messages Kafka de ticket-service (voir KafkaConsumerService).
 }

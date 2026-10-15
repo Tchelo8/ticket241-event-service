@@ -1,7 +1,6 @@
 package com.tchelo.event_service_ticket241.entity;
 
 
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.entity.enums.EventStatus;
 import com.tchelo.event_service_ticket241.entity.enums.ValidationMode;
 import jakarta.persistence.*;
@@ -21,7 +20,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "events", indexes = {
         @Index(name = "idx_event_status", columnList = "status"),
-        @Index(name = "idx_event_category", columnList = "category"),
+        @Index(name = "idx_event_category", columnList = "category_id"),
         @Index(name = "idx_event_start_date", columnList = "start_date"),
         @Index(name = "idx_event_structure", columnList = "structure_id"),
         @Index(name = "idx_event_slug", columnList = "slug"),
@@ -31,11 +30,6 @@ import java.util.UUID;
         @Index(name = "idx_event_is_active", columnList = "is_active")
 })
 public class Event extends BaseEntity {
-
-
-//    @Column(nullable = false, unique = true, updatable = false)
-//    private UUID uuid = UUID.randomUUID();
-
 
     @Column(nullable = false, length = 200)
     private String name;
@@ -47,9 +41,9 @@ public class Event extends BaseEntity {
     private String fullDescription;
 
 
-    @Column(nullable = false, length = 50)
-    @Enumerated(EnumType.STRING)
-    private EventCategory category;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
 
     @Column(name = "sub_category", length = 100)
     private String subCategory;
@@ -218,6 +212,10 @@ public class Event extends BaseEntity {
     @Column(name = "cancellation_reason", length = 500)
     private String cancellationReason;
 
+    @Column(name = "is_cancelled")
+    @Builder.Default
+    private Boolean isCancelled = false;
+
 
     @Version
     private Long version;
@@ -242,6 +240,15 @@ public class Event extends BaseEntity {
         this.availableSeats = this.totalSeats - this.soldSeats - this.reservedSeats;
     }
 
+    // Les places se gèrent par catégorie de billet : les compteurs de l'événement en sont la somme.
+    // À appeler après tout mouvement de places sur une catégorie, sinon l'événement ne passe
+    // jamais "complet" et isSaleOpen() se base sur des chiffres faux.
+    public void recalculateSeatsFromCategories() {
+        this.reservedSeats = ticketCategories.stream().mapToInt(TicketCategory::getReservedSeats).sum();
+        this.soldSeats = ticketCategories.stream().mapToInt(TicketCategory::getSoldSeats).sum();
+        this.availableSeats = this.totalSeats - this.soldSeats - this.reservedSeats;
+    }
+
 
     // Ajouter une catégorie de ticket à l'événement
     public void addTicketCategory(TicketCategory ticketCategory) {
@@ -254,6 +261,30 @@ public class Event extends BaseEntity {
     public void removeTicketCategory(TicketCategory ticketCategory) {
         ticketCategories.remove(ticketCategory);
         ticketCategory.setEvent(null);
+    }
+
+    // Raison pour laquelle on ne peut pas réserver de billet sur cet événement, ou null si la vente
+    // est ouverte. Source unique de vérité, utilisée par la réservation Kafka et exposée à
+    // ticket-service (saleClosedReason dans EventResponseDto) pour refuser au plus tôt.
+    // Ne tient pas compte des places : elles se vérifient par catégorie.
+    public String getSaleClosedReason() {
+        if (this.eventStatus != EventStatus.PUBLISHED) {
+            return "L'événement n'est pas ouvert à la vente (statut : " + this.eventStatus + ")";
+        }
+        if (!Boolean.TRUE.equals(this.isActive) || Boolean.TRUE.equals(this.isCancelled)) {
+            return "L'événement n'est plus disponible";
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (this.saleStartDate != null && now.isBefore(this.saleStartDate)) {
+            return "La vente des billets n'a pas encore commencé";
+        }
+        if (this.saleEndDate != null && now.isAfter(this.saleEndDate)) {
+            return "La vente des billets est terminée";
+        }
+        if (isPastEvent()) {
+            return "L'événement a déjà commencé";
+        }
+        return null;
     }
 
     //Vérifie si des billets sont encore disponibles

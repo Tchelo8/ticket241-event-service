@@ -4,16 +4,17 @@ import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
+import com.tchelo.event_service_ticket241.entity.Category;
 import com.tchelo.event_service_ticket241.entity.City;
 import com.tchelo.event_service_ticket241.entity.Event;
 import com.tchelo.event_service_ticket241.entity.Structure;
 import com.tchelo.event_service_ticket241.entity.TicketCategory;
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.entity.enums.EventStatus;
 import com.tchelo.event_service_ticket241.entity.enums.ValidationMode;
 import com.tchelo.event_service_ticket241.exception.*;
 import com.tchelo.event_service_ticket241.mapper.EventMapper;
 import com.tchelo.event_service_ticket241.mapper.TicketCategoryMapper;
+import com.tchelo.event_service_ticket241.repository.CategoryRepository;
 import com.tchelo.event_service_ticket241.repository.CityRepository;
 import com.tchelo.event_service_ticket241.repository.EventRepository;
 import com.tchelo.event_service_ticket241.repository.StructureRepository;
@@ -39,6 +40,7 @@ public class EventServiceImpl implements EventService {
     private final StructureRepository structureRepository;
     private final TicketCategoryRepository ticketCategoryRepository;
     private final CityRepository cityRepository;
+    private final CategoryRepository categoryRepository;
     private final EventMapper eventMapper;
     private final TicketCategoryMapper ticketCategoryMapper;
 
@@ -77,8 +79,19 @@ public class EventServiceImpl implements EventService {
 
         log.debug("Ville trouvée : {} - {}", city.getName(), city.getCountry());
 
+        //récupérer la catégorie depuis la base de données
+        Long categoryId = dto.getCategoryId();
+        log.debug("Recherche de la catégorie avec l'ID : {}", categoryId);
+
+        Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new CategoryNotFoundException(
+                        "Catégorie non trouvée avec l'ID : " + categoryId
+                ));
+
+        log.debug("Catégorie trouvée : {}", category.getDisplayName());
+
         // Convertir DTO en entité
-        Event event = eventMapper.toEntity(dto, structure, city);
+        Event event = eventMapper.toEntity(dto, structure, city, category);
         event.setCreatedBy(userId);
         event.setUpdatedBy(userId);
 
@@ -141,6 +154,15 @@ public class EventServiceImpl implements EventService {
         if (dto.getStartDate() != null) {
             validateEventDates(dto.getStartDate(), dto.getEndDate(),
                     dto.getSaleStartDate(), dto.getSaleEndDate());
+        }
+
+        //si la catégorie est modifiée, d'abord vérifier qu'elle existe
+        if (dto.getCategoryId() != null && !dto.getCategoryId().equals(event.getCategory().getId())) {
+            Category newCategory = categoryRepository.findById(dto.getCategoryId())
+                    .orElseThrow(() -> new CategoryNotFoundException(
+                            "Catégorie non trouvée avec l'ID : " + dto.getCategoryId()
+                    ));
+            event.setCategory(newCategory);
         }
 
         //si la ville est modifiée, d'abord vérifier qu'elle existe
@@ -206,9 +228,9 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<EventSummaryDto> getEventsByCategory(EventCategory category, Pageable pageable) {
-        return eventRepository.findByCategoryAndIsPublicTrueAndIsActiveTrueAndStatus(
-                category, EventStatus.PUBLISHED, pageable
+    public Page<EventSummaryDto> getEventsByCategory(String categoryName, Pageable pageable) {
+        return eventRepository.findByCategoryNameIgnoreCaseAndIsPublicTrueAndIsActiveTrueAndEventStatus(
+                categoryName, EventStatus.PUBLISHED, pageable
         ).map(eventMapper::toSummaryDto);
     }
 
@@ -255,9 +277,9 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<EventSummaryDto> getEventsByStructure(Long structureId, Pageable pageable) {
+    public Page<EventResponseDto> getEventsByStructure(Long structureId, Pageable pageable) {
         return eventRepository.findByStructureIdAndIsActiveTrue(structureId, pageable)
-                .map(eventMapper::toSummaryDto);
+                .map(eventMapper::toResponseDto);
     }
 
     @Override
@@ -354,13 +376,13 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public void incrementViewCount(String uuid) {
-        Event event = eventRepository.findByUuid(uuid)
-                .orElseThrow(() -> new EventNotFoundException(
-                        "Événement non trouvé avec l'UUID : " + uuid
-                ));
+        int rowsAffected = eventRepository.incrementViewCount(uuid);
 
-        event.setViewCount(event.getViewCount() + 1);
-        eventRepository.save(event);
+        if (rowsAffected == 0) {
+            throw new EventNotFoundException(
+                    "Événement non trouvé avec l'UUID : " + uuid
+            );
+        }
     }
 
     // ============================================

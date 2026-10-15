@@ -1,6 +1,5 @@
 package com.tchelo.event_service_ticket241.dto.request;
 
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import com.tchelo.event_service_ticket241.entity.enums.EventStatus;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -22,7 +21,7 @@ public class UpdateEventDto {
     @Size(min = 10, message = "La description doit contenir au moins 10 caractères")
     private String fullDescription;
 
-    private EventCategory category;
+    private Long categoryId;
 
     @Size(max = 100)
     private String subCategory;

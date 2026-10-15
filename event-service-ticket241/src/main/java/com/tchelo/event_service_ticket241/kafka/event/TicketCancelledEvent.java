@@ -16,6 +16,10 @@ public class TicketCancelledEvent {
     private String eventId;
     private Long ticketId;
     private String ticketNumber;
+    private String orderId;
+    // Statut du billet avant l'annulation : RESERVED → on libère une place réservée,
+    // PAID → on libère une place vendue
+    private String previousStatus;
     private Long eventIdLong;
     private Long categoryId;
     private Integer quantity;

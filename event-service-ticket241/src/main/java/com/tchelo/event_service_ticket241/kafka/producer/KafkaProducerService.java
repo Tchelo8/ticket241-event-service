@@ -4,11 +4,13 @@ package com.tchelo.event_service_ticket241.kafka.producer;
 import com.tchelo.event_service_ticket241.kafka.event.SeatsDecreasedEvent;
 import com.tchelo.event_service_ticket241.kafka.event.SeatsDecreaseFailedEvent;
 
+// Envois synchrones : ils lèvent une exception si le broker ne confirme pas, ce qui fait rejouer le
+// message entrant. Le traitement étant idempotent, la réponse est simplement republiée.
 public interface KafkaProducerService {
 
-    // Publie un événement "Places Décrémentées" pour les autres services qui en auront besoin avant d'effectuer certaines taches
+    // Places réservées pour la commande
     void publishSeatsDecreasedEvent(SeatsDecreasedEvent event);
 
-    // Publie un événement "Échec Décrémentation Places"
+    // Réservation refusée pour la commande
     void publishSeatsDecreaseFailedEvent(SeatsDecreaseFailedEvent event);
 }

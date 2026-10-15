@@ -9,7 +9,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -17,47 +17,32 @@ import java.util.concurrent.CompletableFuture;
 @ConditionalOnProperty(name = "kafka.enabled", havingValue = "true")
 public class KafkaProducerServiceImpl implements KafkaProducerService {
 
+    private static final long SEND_TIMEOUT_SECONDS = 10;
+
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Override
     public void publishSeatsDecreasedEvent(SeatsDecreasedEvent event) {
-        String topic = "seats-decreased";
-
-        log.info("Publication événement Kafka : {} → Topic: {}", event.getKafkaEventId(), topic);
-
-        CompletableFuture<SendResult<String, Object>> future =
-                kafkaTemplate.send(topic, event.getOrderId(), event);
-
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
-                log.info("Événement publié avec succès : {} → Partition: {}, Offset: {}",
-                        event.getKafkaEventId(),
-                        result.getRecordMetadata().partition(),
-                        result.getRecordMetadata().offset());
-            } else {
-                log.error("Échec publication événement : {}", event.getKafkaEventId(), ex);
-            }
-        });
+        send("seats-decreased", event.getOrderId(), event);
     }
 
     @Override
     public void publishSeatsDecreaseFailedEvent(SeatsDecreaseFailedEvent event) {
-        String topic = "seats-decrease-failed";
+        send("seats-decrease-failed", event.getOrderId(), event);
+    }
 
-        log.info("Publication événement Kafka : {} → Topic: {}", event.getKafkaEventId(), topic);
-
-        CompletableFuture<SendResult<String, Object>> future =
-                kafkaTemplate.send(topic, event.getOrderId(), event);
-
-        future.whenComplete((result, ex) -> {
-            if (ex == null) {
-                log.info("Événement publié avec succès → Topic: {}, Partition: {}, Offset: {}",
-                        topic,
-                        result.getRecordMetadata().partition(),
-                        result.getRecordMetadata().offset());
-            } else {
-                log.error("Échec publication événement → Topic: {}", topic, ex);
-            }
-        });
+    // Clé = orderId : tous les messages d'une commande vont dans la même partition, donc sont lus dans l'ordre
+    private void send(String topic, String orderId, Object payload) {
+        try {
+            SendResult<String, Object> result = kafkaTemplate.send(topic, orderId, payload)
+                    .get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            log.info("Événement publié → topic {}, commande {}, partition {}, offset {}",
+                    topic, orderId, result.getRecordMetadata().partition(), result.getRecordMetadata().offset());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Publication interrompue sur " + topic, e);
+        } catch (Exception e) {
+            throw new IllegalStateException("Échec de publication sur " + topic + " pour la commande " + orderId, e);
+        }
     }
 }

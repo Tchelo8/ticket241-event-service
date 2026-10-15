@@ -4,12 +4,11 @@ import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
+import com.tchelo.event_service_ticket241.entity.Category;
 import com.tchelo.event_service_ticket241.entity.City;
 import com.tchelo.event_service_ticket241.entity.Event;
 import com.tchelo.event_service_ticket241.entity.Structure;
 import com.tchelo.event_service_ticket241.entity.enums.EventStatus;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
@@ -23,13 +22,14 @@ public class EventMapper {
     private final TicketCategoryMapper ticketCategoryMapper;
 
     //Convertit CreateEventDto en Event (sans les catégories de tickets, les catégories sont ajoutées dans le service
-    public Event toEntity(CreateEventDto dto, Structure structure, City city) {
+    public Event toEntity(CreateEventDto dto, Structure structure, City city, Category category) {
         Event event = new Event();
-        BeanUtils.copyProperties(dto, event, "ticketCategories", "structureId", "cityId");
+        BeanUtils.copyProperties(dto, event, "ticketCategories", "structureId", "cityId", "categoryId");
 
         // Assignation manuelle des champs spécifiques
         event.setStructure(structure);
         event.setCity(city);
+        event.setCategory(category);
         event.setEventStatus(EventStatus.DRAFT);  // Statut de départ d"un evènement
         event.setAvailableSeats(dto.getTotalSeats());
         event.setReservedSeats(0);
@@ -64,7 +64,7 @@ public class EventMapper {
     public EventResponseDto toResponseDto(Event event) {
         EventResponseDto dto = new EventResponseDto();
 
-        BeanUtils.copyProperties(event, dto, "structure", "ticketCategories");
+        BeanUtils.copyProperties(event, dto, "structure", "ticketCategories", "category");
 
         if (event.getStructure() != null) {
             dto.setStructureId(event.getStructure().getId());
@@ -75,6 +75,12 @@ public class EventMapper {
             dto.setCityId(event.getCity().getId());
             dto.setCityName(event.getCity().getName());
             dto.setCityCountry(event.getCity().getCountry());
+        }
+
+        if (event.getCategory() != null) {
+            dto.setCategoryId(event.getCategory().getId());
+            dto.setCategory(event.getCategory().getName());
+            dto.setCategoryDisplayName(event.getCategory().getDisplayName());
         }
 
         // Conversion des catégories de tickets
@@ -97,12 +103,18 @@ public class EventMapper {
     public EventSummaryDto toSummaryDto(Event event) {
         EventSummaryDto dto = new EventSummaryDto();
 
-        BeanUtils.copyProperties(event, dto);
+        BeanUtils.copyProperties(event, dto, "category");
 
         if (event.getCity() != null) {
             dto.setCityId(event.getCity().getId());
             dto.setCityName(event.getCity().getName());
             dto.setCityCountry(event.getCity().getCountry());
+        }
+
+        if (event.getCategory() != null) {
+            dto.setCategoryId(event.getCategory().getId());
+            dto.setCategory(event.getCategory().getName());
+            dto.setCategoryDisplayName(event.getCategory().getDisplayName());
         }
 
         dto.setIsSaleOpen(event.isSaleOpen());

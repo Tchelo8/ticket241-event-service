@@ -4,7 +4,6 @@ import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
-import com.tchelo.event_service_ticket241.entity.enums.EventCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -22,7 +21,7 @@ public interface EventService {
     // Liste tous les événements publics et publiés pour la page d'accueil par exemple
     Page<EventSummaryDto> getAllPublicEvents(Pageable pageable);
 
-    Page<EventSummaryDto> getEventsByCategory(EventCategory category, Pageable pageable);
+    Page<EventSummaryDto> getEventsByCategory(String categoryName, Pageable pageable);
 
     Page<EventSummaryDto> getEventsByCity(Long cityId, Pageable pageable);
 
@@ -37,7 +36,7 @@ public interface EventService {
     //Liste les événements mis en avant
     Page<EventSummaryDto> getFeaturedEvents(Pageable pageable);
 
-    Page<EventSummaryDto> getEventsByStructure(Long structureId, Pageable pageable);
+    Page<EventResponseDto> getEventsByStructure(Long structureId, Pageable pageable);
 
     Page<EventSummaryDto> getEventsByCreator(String userId, Pageable pageable);
 

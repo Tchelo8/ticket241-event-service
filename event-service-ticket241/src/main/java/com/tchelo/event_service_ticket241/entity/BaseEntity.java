@@ -30,4 +30,11 @@ public abstract class BaseEntity {
 
     private Boolean status = true;
     protected Boolean isArchived = false;
+
+    @PrePersist
+    protected void generateUuid() {
+        if (this.uuid == null) {
+            this.uuid = UUID.randomUUID().toString();
+        }
+    }
 }

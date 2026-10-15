@@ -2,7 +2,6 @@ package com.tchelo.event_service_ticket241.service.impl;
 
 import com.tchelo.event_service_ticket241.dto.response.TicketCategoryResponseDto;
 import com.tchelo.event_service_ticket241.entity.TicketCategory;
-import com.tchelo.event_service_ticket241.exception.InsufficientSeatsException;
 import com.tchelo.event_service_ticket241.exception.TicketCategoryNotFoundException;
 import com.tchelo.event_service_ticket241.mapper.TicketCategoryMapper;
 import com.tchelo.event_service_ticket241.repository.TicketCategoryRepository;
@@ -15,14 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
+@Transactional(readOnly = true)
 public class TicketCategoryServiceImpl implements TicketCategoryService {
 
     private final TicketCategoryRepository ticketCategoryRepository;
     private final TicketCategoryMapper ticketCategoryMapper;
 
     @Override
-    @Transactional(readOnly = true)
     public TicketCategoryResponseDto getCategoryById(Long categoryId) {
         TicketCategory category = ticketCategoryRepository.findById(categoryId)
                 .orElseThrow(() -> new TicketCategoryNotFoundException(
@@ -33,12 +31,13 @@ public class TicketCategoryServiceImpl implements TicketCategoryService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Boolean checkAvailability(Long categoryId, Integer quantity) {
-        TicketCategory category = ticketCategoryRepository.findById(categoryId)
-                .orElseThrow(() -> new TicketCategoryNotFoundException(
-                        "Catégorie de ticket non trouvée avec l'ID : " + categoryId
-                ));
+    public TicketCategoryResponseDto getCategoryForEvent(Long eventId, Long categoryId) {
+        return ticketCategoryMapper.toResponseDto(findCategoryOfEvent(eventId, categoryId));
+    }
+
+    @Override
+    public Boolean checkAvailability(Long eventId, Long categoryId, Integer quantity) {
+        TicketCategory category = findCategoryOfEvent(eventId, categoryId);
 
         boolean isAvailable = category.hasAvailableSeats(quantity);
 
@@ -48,71 +47,13 @@ public class TicketCategoryServiceImpl implements TicketCategoryService {
         return isAvailable;
     }
 
-    @Override
-    public void decreaseAvailableSeats(Long categoryId, Integer quantity) {
-        TicketCategory category = ticketCategoryRepository.findById(categoryId)
+    // Une catégorie qui existe mais appartient à un autre événement est traitée comme introuvable :
+    // sinon on pourrait réserver le prix d'une catégorie d'un autre événement
+    private TicketCategory findCategoryOfEvent(Long eventId, Long categoryId) {
+        return ticketCategoryRepository.findById(categoryId)
+                .filter(category -> category.getEvent() != null && category.getEvent().getId().equals(eventId))
                 .orElseThrow(() -> new TicketCategoryNotFoundException(
-                        "Catégorie de ticket non trouvée avec l'ID : " + categoryId
+                        "Catégorie de ticket " + categoryId + " introuvable pour l'événement " + eventId
                 ));
-
-        if (!category.hasAvailableSeats(quantity)) {
-            throw new InsufficientSeatsException(
-                    String.format("Places insuffisantes. Disponibles: %d, Demandées: %d",
-                            category.getAvailableSeats(), quantity)
-            );
-        }
-
-        category.setAvailableSeats(category.getAvailableSeats() - quantity);
-        category.setSoldSeats(category.getSoldSeats() + quantity);
-
-        ticketCategoryRepository.save(category);
-
-        log.info("{} places décrémentées pour catégorie {}", quantity, categoryId);
-    }
-
-    @Override
-    public void increaseAvailableSeats(Long categoryId, Integer quantity) {
-        TicketCategory category = ticketCategoryRepository.findById(categoryId)
-                .orElseThrow(() -> new TicketCategoryNotFoundException(
-                        "Catégorie de ticket non trouvée avec l'ID : " + categoryId
-                ));
-
-        category.setAvailableSeats(category.getAvailableSeats() + quantity);
-
-        if (category.getSoldSeats() >= quantity) {
-            category.setSoldSeats(category.getSoldSeats() - quantity);
-        }
-
-        ticketCategoryRepository.save(category);
-
-        log.info("{} places libérées pour catégorie {}", quantity, categoryId);
-    }
-
-    @Override
-    public void reserveSeats(Long categoryId, Integer quantity) {
-        TicketCategory category = ticketCategoryRepository.findById(categoryId)
-                .orElseThrow(() -> new TicketCategoryNotFoundException(
-                        "Catégorie de ticket non trouvée avec l'ID : " + categoryId
-                ));
-
-        category.reserveSeats(quantity);
-
-        ticketCategoryRepository.save(category);
-
-        log.info("{} places réservées pour catégorie {}", quantity, categoryId);
-    }
-
-    @Override
-    public void cancelReservation(Long categoryId, Integer quantity) {
-        TicketCategory category = ticketCategoryRepository.findById(categoryId)
-                .orElseThrow(() -> new TicketCategoryNotFoundException(
-                        "Catégorie de ticket non trouvée avec l'ID : " + categoryId
-                ));
-
-        category.cancelReservation(quantity);
-
-        ticketCategoryRepository.save(category);
-
-        log.info("Réservation de {} places annulée pour catégorie {}", quantity, categoryId);
     }
 }
