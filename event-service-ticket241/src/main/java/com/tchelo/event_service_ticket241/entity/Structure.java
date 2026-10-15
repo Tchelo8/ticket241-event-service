@@ -36,4 +36,12 @@ public class Structure extends BaseEntity {
     private Integer validatedEventCount = 0;
 
     private String typeContrat;
+
+    // Code d'invitation des admins de structure : seul son hash SHA-256 est stocké, le code en clair
+    // n'est montré qu'une fois à l'admin Ticket241 qui le génère. Usage unique, durée limitée.
+    @Column(name = "invitation_code_hash", length = 64)
+    private String invitationCodeHash;
+
+    @Column(name = "invitation_code_expires_at")
+    private java.time.LocalDateTime invitationCodeExpiresAt;
 }

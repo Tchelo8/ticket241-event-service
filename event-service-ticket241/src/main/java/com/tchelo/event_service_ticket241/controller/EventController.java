@@ -5,6 +5,7 @@ import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
 import com.tchelo.event_service_ticket241.dto.response.TicketCategoryResponseDto;
+import com.tchelo.event_service_ticket241.security.UserContext;
 import com.tchelo.event_service_ticket241.service.EventService;
 import com.tchelo.event_service_ticket241.service.TicketCategoryService;
 import jakarta.validation.Valid;
@@ -83,11 +84,17 @@ public class EventController {
         return ResponseEntity.ok().build();
     }
 
-    //route sans incrémentation de vues pour les admins des structures
+    //route sans incrémentation de vues pour les admins des structures (admin ou admin de la structure)
     @GetMapping("/admin/slug/{slug}")
-    public ResponseEntity<EventResponseDto> getEventBySlugForAdmin(@PathVariable String slug) {
+    public ResponseEntity<EventResponseDto> getEventBySlugForAdmin(
+            @PathVariable String slug,
+            @RequestHeader(value = "X-User-Id", required = true) String userId,
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
+    ) {
         log.info("Récupération admin de l'événement par slug : {}", slug);
-        EventResponseDto event = eventService.getEventBySlug(slug);
+        EventResponseDto event = eventService.getEventBySlugForManagement(
+                slug, UserContext.of(userId, roles, structureId));
         return ResponseEntity.ok(event);
     }
 
@@ -162,17 +169,18 @@ public class EventController {
         return ResponseEntity.ok(events);
     }
 
-    // Endpoints Protégés c'est à dire sans authentification personne ne pourra les atteindre
+    // Endpoints Protégés : admin Ticket241 ou admin de la structure de l'événement (vérifié dans EventService)
 
     @PostMapping
     public ResponseEntity<EventResponseDto> createEvent(
             @Valid @RequestBody CreateEventDto dto,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
-            @RequestHeader(value = "X-User-Roles", required = true) String roles
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
     ) {
         log.info("Création d'un événement par l'utilisateur : {}", userId);
 
-        EventResponseDto createdEvent = eventService.createEvent(dto, userId, roles);
+        EventResponseDto createdEvent = eventService.createEvent(dto, UserContext.of(userId, roles, structureId));
 
         log.info("Événement créé avec succès sut Ticket241: {}", createdEvent.getUuid());
 
@@ -184,11 +192,12 @@ public class EventController {
             @PathVariable String uuid,
             @Valid @RequestBody UpdateEventDto dto,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
-            @RequestHeader(value = "X-User-Roles", required = true) String roles
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
     ) {
         log.info("Mise à jour de l'événement {} par l'utilisateur {}", uuid, userId);
 
-        EventResponseDto updatedEvent = eventService.updateEvent(uuid, dto, userId, roles);
+        EventResponseDto updatedEvent = eventService.updateEvent(uuid, dto, UserContext.of(userId, roles, structureId));
 
         log.info("Événement mis à jour avec succès");
 
@@ -199,11 +208,12 @@ public class EventController {
     public ResponseEntity<Map<String, String>> deleteEvent(
             @PathVariable String uuid,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
-            @RequestHeader(value = "X-User-Roles", required = true) String roles
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
     ) {
         log.info("Suppression de l'événement {} par l'utilisateur {}", uuid, userId);
 
-        eventService.deleteEvent(uuid, userId, roles);
+        eventService.deleteEvent(uuid, UserContext.of(userId, roles, structureId));
 
         Map<String, String> response = new HashMap<>();
         response.put("message", "Événement supprimé avec succès dela plateforme Ticket241");
@@ -218,11 +228,12 @@ public class EventController {
     public ResponseEntity<EventResponseDto> publishEvent(
             @PathVariable String uuid,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
-            @RequestHeader(value = "X-User-Roles", required = true) String roles
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
     ) {
         log.info("Publication de l'événement {} par l'utilisateur {}", uuid, userId);
 
-        EventResponseDto publishedEvent = eventService.publishEvent(uuid, userId, roles);
+        EventResponseDto publishedEvent = eventService.publishEvent(uuid, UserContext.of(userId, roles, structureId));
 
         log.info("Événement publié avec succès");
 
@@ -234,29 +245,35 @@ public class EventController {
             @PathVariable String uuid,
             @RequestBody Map<String, String> body,
             @RequestHeader(value = "X-User-Id", required = true) String userId,
-            @RequestHeader(value = "X-User-Roles", required = true) String roles
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
     ) {
         log.info("Annulation de l'événement {} par l'utilisateur {}", uuid, userId);
 
         String reason = body.getOrDefault("reason", "Aucune raison fournie");
 
-        EventResponseDto cancelledEvent = eventService.cancelEvent(uuid, reason, userId, roles);
+        EventResponseDto cancelledEvent = eventService.cancelEvent(uuid, reason, UserContext.of(userId, roles, structureId));
 
         log.info("Événement annulé avec succès");
 
         return ResponseEntity.ok(cancelledEvent);
     }
 
+    // Back-office d'une structure (brouillons compris) : admin ou admin de cette structure
     @GetMapping("/structure/{structureId}")
     public ResponseEntity<Page<EventResponseDto>> getEventsByStructure(
             @PathVariable Long structureId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "10") int size,
+            @RequestHeader(value = "X-User-Id", required = true) String userId,
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String userStructureId
     ) {
         log.info("Récupération des événements de la structure : {}", structureId);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<EventResponseDto> events = eventService.getEventsByStructure(structureId, pageable);
+        Page<EventResponseDto> events = eventService.getEventsByStructure(
+                structureId, pageable, UserContext.of(userId, roles, userStructureId));
 
         return ResponseEntity.ok(events);
     }

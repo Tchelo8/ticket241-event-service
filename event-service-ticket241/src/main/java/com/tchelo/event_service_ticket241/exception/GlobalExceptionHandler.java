@@ -77,6 +77,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
+    //gère les structures en doublon (même email)
+    @ExceptionHandler(StructureAlreadyExistsException.class)
+    public ResponseEntity<Map<String, Object>> handleStructureAlreadyExists(
+            StructureAlreadyExistsException ex,
+            HttpServletRequest request
+    ) {
+        log.error("Structure en doublon sur Ticket241 : {}", ex.getMessage());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", HttpStatus.CONFLICT.value());
+        response.put("message", ex.getMessage());
+        response.put("timestamp", LocalDateTime.now());
+        response.put("path", request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
     @ExceptionHandler(CityNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleCityNotFound(
             CityNotFoundException ex,

@@ -89,6 +89,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // Compte le nombre d'événements d'une structure
     long countByStructureIdAndIsActiveTrue(Long structureId);
 
+    // Une structure qui a des événements (même supprimés logiquement) ne peut pas être supprimée
+    boolean existsByStructureId(Long structureId);
+
     // Compte les événements d'une ville
     long countByCityIdAndIsActiveTrue(Long cityId);
 

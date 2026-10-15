@@ -19,6 +19,7 @@ import com.tchelo.event_service_ticket241.repository.CityRepository;
 import com.tchelo.event_service_ticket241.repository.EventRepository;
 import com.tchelo.event_service_ticket241.repository.StructureRepository;
 import com.tchelo.event_service_ticket241.repository.TicketCategoryRepository;
+import com.tchelo.event_service_ticket241.security.UserContext;
 import com.tchelo.event_service_ticket241.service.EventService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,17 +46,21 @@ public class EventServiceImpl implements EventService {
     private final TicketCategoryMapper ticketCategoryMapper;
 
     @Override
-    public EventResponseDto createEvent(CreateEventDto dto, String userId, String roles) {
+    public EventResponseDto createEvent(CreateEventDto dto, UserContext user) {
+        String userId = user.userId();
         log.info("Création d'un événement par l'utilisateur sur Ticket241: {}", userId);
-
-        // Validation des données métier
-        validateEventDates(dto.getStartDate(), dto.getEndDate(), dto.getSaleStartDate(), dto.getSaleEndDate());
-        validateTicketCategories(dto);
 
         // Vérifier que structureId n'est pas null
         if (dto.getStructureId() == null) {
             throw new InvalidEventDataException("L'ID de la structure est obligatoire");
         }
+
+        // Seul un admin Ticket241 ou un admin de cette structure peut créer un événement en son nom
+        checkCanManageStructure(dto.getStructureId(), user);
+
+        // Validation des données métier
+        validateEventDates(dto.getStartDate(), dto.getEndDate(), dto.getSaleStartDate(), dto.getSaleEndDate());
+        validateTicketCategories(dto);
 
         //récupérer la structure
         Long structureId = dto.getStructureId();
@@ -110,7 +115,7 @@ public class EventServiceImpl implements EventService {
         event.setMaxPrice(maxPrice);
 
         // Si validation automatique et utilisateur admin → publier directement
-        if (dto.getValidationMode() == ValidationMode.AUTO && roles.contains("ROLE_ADMIN")) {
+        if (dto.getValidationMode() == ValidationMode.AUTO && user.isAdmin()) {
             event.setEventStatus(EventStatus.PUBLISHED);
             event.setPublishedAt(LocalDateTime.now());
             event.setApprovedBy(userId);
@@ -138,7 +143,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public EventResponseDto updateEvent(String uuid, UpdateEventDto dto, String userId, String roles) {
+    public EventResponseDto updateEvent(String uuid, UpdateEventDto dto, UserContext user) {
+        String userId = user.userId();
         log.info("Mise à jour de l'événement {} par l'utilisateur {}", uuid, userId);
 
         // Récupérer l'événement
@@ -148,7 +154,14 @@ public class EventServiceImpl implements EventService {
                 ));
 
         // Vérifier les permissions
-        checkUpdatePermission(event, userId, roles);
+        checkCanManageStructure(event.getStructure().getId(), user);
+
+        // Mise en avant et promotion sont des décisions de la plateforme, pas de l'organisateur
+        if (!user.isAdmin() && (dto.getIsFeatured() != null || dto.getIsPromoted() != null || dto.getStatus() != null)) {
+            throw new UnauthorizedAccesException(
+                    "Seul un administrateur Ticket241 peut modifier le statut, la mise en avant ou la promotion d'un événement"
+            );
+        }
 
         // Validation des dates si modifiées
         if (dto.getStartDate() != null) {
@@ -221,6 +234,19 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
+    public EventResponseDto getEventBySlugForManagement(String slug, UserContext user) {
+        Event event = eventRepository.findBySlug(slug)
+                .orElseThrow(() -> new EventNotFoundException(
+                        "Événement non trouvé avec le slug : " + slug
+                ));
+
+        checkCanManageStructure(event.getStructure().getId(), user);
+
+        return eventMapper.toResponseDto(event);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<EventSummaryDto> getAllPublicEvents(Pageable pageable) {
         return eventRepository.findPublicEvents(EventStatus.PUBLISHED, pageable)
                 .map(eventMapper::toSummaryDto);
@@ -277,7 +303,10 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<EventResponseDto> getEventsByStructure(Long structureId, Pageable pageable) {
+    public Page<EventResponseDto> getEventsByStructure(Long structureId, Pageable pageable, UserContext user) {
+        // Back-office : brouillons compris, donc réservé à la structure elle-même et aux admins
+        checkCanManageStructure(structureId, user);
+
         return eventRepository.findByStructureIdAndIsActiveTrue(structureId, pageable)
                 .map(eventMapper::toResponseDto);
     }
@@ -290,7 +319,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public void deleteEvent(String uuid, String userId, String roles) {
+    public void deleteEvent(String uuid, UserContext user) {
+        String userId = user.userId();
         log.info("Suppression de l'événement {} par l'utilisateur {}", uuid, userId);
 
         Event event = eventRepository.findByUuid(uuid)
@@ -299,7 +329,14 @@ public class EventServiceImpl implements EventService {
                 ));
 
         // Vérifier les permissions
-        checkDeletePermission(event, userId, roles);
+        checkCanManageStructure(event.getStructure().getId(), user);
+
+        // Vérifier qu'il n'y a pas de tickets vendus
+        if (event.getSoldSeats() > 0) {
+            throw new InvalidEventDataException(
+                    "Impossible de supprimer un événement avec des tickets vendus"
+            );
+        }
 
         // Soft delete
         event.setIsActive(false);
@@ -317,7 +354,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public EventResponseDto publishEvent(String uuid, String userId, String roles) {
+    public EventResponseDto publishEvent(String uuid, UserContext user) {
+        String userId = user.userId();
         log.info("Publication de l'événement {} par l'utilisateur {}", uuid, userId);
 
         Event event = eventRepository.findByUuid(uuid)
@@ -325,8 +363,15 @@ public class EventServiceImpl implements EventService {
                         "Événement non trouvé avec l'UUID : " + uuid
                 ));
 
-        // Vérifier les permissions (admin ou créateur)
-        checkUpdatePermission(event, userId, roles);
+        // Vérifier les permissions (admin, ou admin de la structure)
+        checkCanManageStructure(event.getStructure().getId(), user);
+
+        // Une structure non vérifiée ne met rien en vente seule : un admin Ticket241 publie à sa place
+        if (!user.isAdmin() && !Boolean.TRUE.equals(event.getStructure().getIsVerified())) {
+            throw new UnauthorizedAccesException(
+                    "Votre structure doit être vérifiée par Ticket241 avant de pouvoir publier un événement"
+            );
+        }
 
         // Valider que l'événement peut être publié
         if (event.getEventStatus() != EventStatus.DRAFT && event.getEventStatus() != EventStatus.PENDING_APPROVAL) {
@@ -350,7 +395,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public EventResponseDto cancelEvent(String uuid, String reason, String userId, String roles) {
+    public EventResponseDto cancelEvent(String uuid, String reason, UserContext user) {
+        String userId = user.userId();
         log.info("Annulation de l'événement {} par l'utilisateur {}", uuid, userId);
 
         Event event = eventRepository.findByUuid(uuid)
@@ -359,7 +405,7 @@ public class EventServiceImpl implements EventService {
                 ));
 
         // Vérifier les permissions
-        checkUpdatePermission(event, userId, roles);
+        checkCanManageStructure(event.getStructure().getId(), user);
 
         // Annuler
         event.setEventStatus(EventStatus.CANCELLED);
@@ -437,36 +483,15 @@ public class EventServiceImpl implements EventService {
     }
 
     /**
-     * Vérifie les permissions de mise à jour
+     * Un événement appartient à sa structure : seuls un admin Ticket241 ou un admin de cette structure
+     * peuvent le créer, le modifier, le publier, l'annuler ou le supprimer (plus de droit "créateur" :
+     * un simple utilisateur ne gère aucun événement, et les admins d'une même structure gèrent ensemble
+     * tous ses événements).
      */
-    private void checkUpdatePermission(Event event, String userId, String roles) {
-        boolean isAdmin = roles.contains("ROLE_ADMIN");
-        boolean isCreator = event.getCreatedBy().equals(userId);
-
-        if (!isAdmin && !isCreator) {
+    private void checkCanManageStructure(Long structureId, UserContext user) {
+        if (!user.canManageStructure(structureId)) {
             throw new UnauthorizedAccesException(
-                    "Vous n'avez pas les permissions pour modifier cet événement"
-            );
-        }
-    }
-
-    /**
-     * Vérifie les permissions de suppression
-     */
-    private void checkDeletePermission(Event event, String userId, String roles) {
-        boolean isAdmin = roles.contains("ROLE_ADMIN");
-        boolean isCreator = event.getCreatedBy().equals(userId);
-
-        if (!isAdmin && !isCreator) {
-            throw new UnauthorizedAccesException(
-                    "Vous n'avez pas les permissions pour supprimer cet événement"
-            );
-        }
-
-        // Vérifier qu'il n'y a pas de tickets vendus
-        if (event.getSoldSeats() > 0) {
-            throw new InvalidEventDataException(
-                    "Impossible de supprimer un événement avec des tickets vendus"
+                    "Seuls les administrateurs de cette structure peuvent gérer ses événements"
             );
         }
     }
