@@ -13,6 +13,9 @@ public interface StructureRepository extends JpaRepository<Structure, Long> {
     boolean existsByEmail(String email);
     Structure findByUuid(String uuid);
 
+    // Annuaire public : seules les structures vérifiées par Ticket241 y figurent
+    java.util.List<Structure> findByIsVerifiedTrueOrderByNomAsc();
+
     // Verrouillée pendant la consommation d'un code d'invitation : deux inscriptions simultanées
     // avec le même code ne peuvent pas toutes les deux réussir
     @Lock(LockModeType.PESSIMISTIC_WRITE)

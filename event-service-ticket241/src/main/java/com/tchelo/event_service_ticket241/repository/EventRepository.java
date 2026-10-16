@@ -28,6 +28,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e WHERE e.id = :id")
     Optional<Event> findByIdForUpdate(@Param("id") Long id);
 
+    // Événements à venir visibles du public d'une structure (annuaire public des organisateurs)
+    @Query("SELECT COUNT(e) FROM Event e WHERE e.structure.id = :structureId AND e.isPublic = true "
+            + "AND e.isActive = true AND e.eventStatus = :status AND e.startDate > :now")
+    long countUpcomingPublicEvents(@Param("structureId") Long structureId, @Param("status") EventStatus status,
+                                   @Param("now") java.time.LocalDateTime now);
+
     // Listage des évènements publics et actifs — page d'accueil
 
     @Query("SELECT e FROM Event e WHERE e.isPublic = true AND e.isActive = true AND e.eventStatus = :status ORDER BY e.startDate ASC")
