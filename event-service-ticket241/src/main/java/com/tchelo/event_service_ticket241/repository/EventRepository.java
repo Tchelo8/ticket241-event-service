@@ -96,7 +96,10 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     long countByCityIdAndIsActiveTrue(Long cityId);
 
     // Incrémente le compteur de vues de façon atomique (évite les pertes de vues en cas d'accès concurrents)
+    // Route publique : seuls les événements visibles publiquement comptent (même règle que Event.isPubliclyVisible)
     @Modifying
-    @Query("UPDATE Event e SET e.viewCount = e.viewCount + 1 WHERE e.uuid = :uuid")
-    int incrementViewCount(@Param("uuid") String uuid);
+    @Query("UPDATE Event e SET e.viewCount = e.viewCount + 1 WHERE e.uuid = :uuid AND e.isActive = true " +
+            "AND e.eventStatus NOT IN :hiddenStatuses")
+    int incrementViewCount(@Param("uuid") String uuid,
+                           @Param("hiddenStatuses") java.util.Collection<EventStatus> hiddenStatuses);
 }

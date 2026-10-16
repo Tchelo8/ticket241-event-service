@@ -287,6 +287,15 @@ public class Event extends BaseEntity {
         return null;
     }
 
+    // Visible sur les pages publiques : tout sauf les brouillons, les événements en attente de
+    // validation et les événements supprimés. Un événement annulé ou reporté reste consultable
+    // (les détenteurs de billets doivent pouvoir le voir).
+    public boolean isPubliclyVisible() {
+        return Boolean.TRUE.equals(this.isActive)
+                && this.eventStatus != EventStatus.DRAFT
+                && this.eventStatus != EventStatus.PENDING_APPROVAL;
+    }
+
     //Vérifie si des billets sont encore disponibles
     public boolean hasAvailableSeats(int requestedSeats) {
         return this.availableSeats != null && this.availableSeats >= requestedSeats;

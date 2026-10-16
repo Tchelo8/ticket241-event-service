@@ -8,9 +8,11 @@
 | Port direct (dev) | `http://localhost:9001` |
 | Préfixe | `/api/events` |
 | Format | JSON, UTF-8 |
-| Auth | **aucune** sur les routes listées en §3 |
+| Auth | **aucune** sur les routes listées en §3 (accessibles sans compte via la gateway) |
 
 > ⚠️ Le service ne configure **pas de CORS**. Le navigateur doit passer par la **gateway** (qui gère CORS + JWT), pas appeler `:9001` directement.
+
+> ℹ️ Les détails d'un événement (`/{uuid}`, `/slug/{slug}`) ne renvoient que les événements **visibles publiquement** : un brouillon ou un événement en attente de validation répond `404`. Un événement annulé ou reporté reste consultable.
 
 Test rapide : `GET /hello` → texte brut de bienvenue.
 

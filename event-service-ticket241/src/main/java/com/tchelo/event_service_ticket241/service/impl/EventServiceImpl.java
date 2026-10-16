@@ -213,7 +213,9 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional(readOnly = true)
     public EventResponseDto getEventByUuid(String uuid) {
+        // Route publique : un brouillon est traité comme inexistant (même réponse 404)
         Event event = eventRepository.findByUuid(uuid)
+                .filter(Event::isPubliclyVisible)
                 .orElseThrow(() -> new EventNotFoundException(
                         "Événement non trouvé avec l'UUID : " + uuid
                 ));
@@ -224,7 +226,10 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional(readOnly = true)
     public EventResponseDto getEventBySlug(String slug) {
+        // Route publique : un brouillon est traité comme inexistant (même réponse 404).
+        // Les organisateurs consultent leurs brouillons via getEventBySlugForManagement.
         Event event = eventRepository.findBySlug(slug)
+                .filter(Event::isPubliclyVisible)
                 .orElseThrow(() -> new EventNotFoundException(
                         "Événement non trouvé avec le slug : " + slug
                 ));
@@ -422,7 +427,8 @@ public class EventServiceImpl implements EventService {
 
     @Override
     public void incrementViewCount(String uuid) {
-        int rowsAffected = eventRepository.incrementViewCount(uuid);
+        int rowsAffected = eventRepository.incrementViewCount(uuid,
+                java.util.List.of(EventStatus.DRAFT, EventStatus.PENDING_APPROVAL));
 
         if (rowsAffected == 0) {
             throw new EventNotFoundException(

@@ -134,6 +134,25 @@ class EventServiceImplPermissionTest {
     }
 
     @Test
+    void draftsAreInvisibleOnPublicPages() {
+        when(eventRepository.findBySlug("concert")).thenReturn(Optional.of(event));
+
+        assertThatThrownBy(() -> service.getEventByUuid("event-1"))
+                .isInstanceOf(com.tchelo.event_service_ticket241.exception.EventNotFoundException.class);
+        assertThatThrownBy(() -> service.getEventBySlug("concert"))
+                .isInstanceOf(com.tchelo.event_service_ticket241.exception.EventNotFoundException.class);
+        // L'organisateur, lui, voit son brouillon par la route de gestion
+        assertThat(service.getEventBySlugForManagement("concert", ADMIN_OF_STRUCTURE_1)).isNotNull();
+
+        event.setEventStatus(EventStatus.PUBLISHED);
+        assertThat(service.getEventByUuid("event-1")).isNotNull();
+
+        // Un événement annulé reste consultable par les détenteurs de billets
+        event.setEventStatus(EventStatus.CANCELLED);
+        assertThat(service.getEventBySlug("concert")).isNotNull();
+    }
+
+    @Test
     void onlyThePlatformCanFeatureAnEvent() {
         UpdateEventDto featured = UpdateEventDto.builder().isFeatured(true).build();
 
