@@ -4,6 +4,7 @@ package com.tchelo.event_service_ticket241.kafka.consumer;
 import com.tchelo.event_service_ticket241.kafka.event.*;
 import com.tchelo.event_service_ticket241.kafka.producer.KafkaProducerService;
 import com.tchelo.event_service_ticket241.service.SeatReservationService;
+import com.tchelo.event_service_ticket241.service.SeatReservationService.ReservationLine;
 import com.tchelo.event_service_ticket241.service.SeatReservationService.ReservationOutcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 // Côté event-service de la saga de réservation. Chaque message est appliqué dans une transaction
@@ -33,8 +35,7 @@ public class KafkaConsumerService {
     public void handleTicketReserved(TicketReservedEvent event) {
         log.info("Événement reçu : ticket-reserved pour la commande {}", event.getOrderId());
 
-        ReservationOutcome outcome = seatReservationService.reserve(
-                event.getOrderId(), event.getTicketCategoryId(), event.getQuantity());
+        ReservationOutcome outcome = seatReservationService.reserve(event.getOrderId(), reservedLines(event));
 
         if (outcome.accepted()) {
             kafkaProducerService.publishSeatsDecreasedEvent(SeatsDecreasedEvent.builder()
@@ -69,7 +70,7 @@ public class KafkaConsumerService {
     @KafkaListener(topics = "ticket-paid", groupId = "event-service-group")
     public void handleTicketPaid(TicketPaidEvent event) {
         log.info("Événement reçu : ticket-paid pour la commande {}", event.getOrderId());
-        seatReservationService.confirmPaidOrder(event.getOrderId(), event.getQuantity());
+        seatReservationService.confirmPaidOrder(event.getOrderId(), paidLines(event));
     }
 
     // ÉCOUTE : billet annulé → libère une place réservée ou vendue selon son statut d'avant
@@ -79,9 +80,9 @@ public class KafkaConsumerService {
                 event.getTicketNumber(), event.getPreviousStatus());
 
         if ("PAID".equals(event.getPreviousStatus())) {
-            seatReservationService.releaseSoldTicket(event.getOrderId(), event.getTicketId());
+            seatReservationService.releaseSoldTicket(event.getOrderId(), event.getTicketId(), event.getCategoryId());
         } else {
-            seatReservationService.releaseReservedTicket(event.getOrderId(), event.getTicketId());
+            seatReservationService.releaseReservedTicket(event.getOrderId(), event.getTicketId(), event.getCategoryId());
         }
     }
 
@@ -89,6 +90,26 @@ public class KafkaConsumerService {
     @KafkaListener(topics = "reservation-expired", groupId = "event-service-group")
     public void handleReservationExpired(ReservationExpiredEvent event) {
         log.info("Événement reçu : reservation-expired pour le billet {}", event.getTicketNumber());
-        seatReservationService.releaseReservedTicket(event.getOrderId(), event.getTicketId());
+        seatReservationService.releaseReservedTicket(event.getOrderId(), event.getTicketId(), event.getCategoryId());
+    }
+
+    // Détail par catégorie ; un ancien message (sans lignes) décrit une commande d'une seule catégorie
+    static List<ReservationLine> reservedLines(TicketReservedEvent event) {
+        if (event.getLines() != null && !event.getLines().isEmpty()) {
+            return event.getLines().stream()
+                    .map(line -> new ReservationLine(line.getTicketCategoryId(), line.getQuantity()))
+                    .toList();
+        }
+        return List.of(new ReservationLine(event.getTicketCategoryId(), event.getQuantity()));
+    }
+
+    // null : toutes les places encore réservées de la commande deviennent vendues
+    static List<ReservationLine> paidLines(TicketPaidEvent event) {
+        if (event.getLines() != null && !event.getLines().isEmpty()) {
+            return event.getLines().stream()
+                    .map(line -> new ReservationLine(line.getTicketCategoryId(), line.getQuantity()))
+                    .toList();
+        }
+        return event.getQuantity() == null ? null : List.of(new ReservationLine(event.getCategoryId(), event.getQuantity()));
     }
 }

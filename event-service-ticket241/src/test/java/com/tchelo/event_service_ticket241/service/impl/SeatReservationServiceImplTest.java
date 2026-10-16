@@ -10,6 +10,7 @@ import com.tchelo.event_service_ticket241.repository.EventRepository;
 import com.tchelo.event_service_ticket241.repository.ProcessedKafkaMessageRepository;
 import com.tchelo.event_service_ticket241.repository.SeatReservationRepository;
 import com.tchelo.event_service_ticket241.repository.TicketCategoryRepository;
+import com.tchelo.event_service_ticket241.service.SeatReservationService.ReservationLine;
 import com.tchelo.event_service_ticket241.service.SeatReservationService.ReservationOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import org.mockito.quality.Strictness;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -244,5 +246,98 @@ class SeatReservationServiceImplTest {
         verify(seatReservationRepository).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo(SeatReservationStatus.REJECTED);
         assertThat(saved.getValue().getFailureReason()).isEqualTo("Quantité de billets invalide");
+    }
+
+    // ===== Commandes de plusieurs catégories =====
+
+    @Test
+    void aMixedOrderReservesEveryCategoryAtOnce() {
+        ReservationOutcome outcome = service.reserve("order-1",
+                List.of(new ReservationLine(STANDARD_ID, 3), new ReservationLine(VIP_ID, 2)));
+
+        assertThat(outcome.accepted()).isTrue();
+        assertThat(vip.getReservedSeats()).isEqualTo(2);
+        assertThat(standard.getReservedSeats()).isEqualTo(3);
+        assertThat(event.getReservedSeats()).isEqualTo(5);
+        SeatReservation reservation = reservations.get("order-1");
+        assertThat(reservation.getLines()).hasSize(2);
+        assertThat(reservation.getReservedQuantity()).isEqualTo(5);
+        assertThat(reservation.getTicketCategoryId()).isNull();
+    }
+
+    @Test
+    void aMixedOrderIsAllOrNothing() {
+        // 2 VIP possibles, mais 20 Standard pour 10 places : rien n'est réservé, même pas les VIP
+        ReservationOutcome outcome = service.reserve("order-1",
+                List.of(new ReservationLine(VIP_ID, 2), new ReservationLine(STANDARD_ID, 20)));
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(outcome.message()).contains("Standard");
+        assertThat(vip.getReservedSeats()).isZero();
+        assertThat(standard.getReservedSeats()).isZero();
+        assertThat(reservations.get("order-1").getStatus()).isEqualTo(SeatReservationStatus.REJECTED);
+    }
+
+    @Test
+    void releasingATicketGivesBackASeatInItsOwnCategory() {
+        service.reserve("order-1", List.of(new ReservationLine(STANDARD_ID, 3), new ReservationLine(VIP_ID, 2)));
+
+        service.releaseReservedTicket("order-1", 100L, VIP_ID);
+
+        assertThat(vip.getReservedSeats()).isEqualTo(1);
+        assertThat(standard.getReservedSeats()).isEqualTo(3);
+        assertThat(reservations.get("order-1").getReservedQuantity()).isEqualTo(4);
+    }
+
+    @Test
+    void anOldMessageWithoutCategoryCannotGuessInAMixedOrder() {
+        service.reserve("order-1", List.of(new ReservationLine(STANDARD_ID, 3), new ReservationLine(VIP_ID, 2)));
+
+        service.releaseReservedTicket("order-1", 100L);
+
+        assertThat(vip.getReservedSeats()).isEqualTo(2);
+        assertThat(standard.getReservedSeats()).isEqualTo(3);
+    }
+
+    @Test
+    void paymentSellsTheSeatsOfEachCategory() {
+        service.reserve("order-1", List.of(new ReservationLine(STANDARD_ID, 3), new ReservationLine(VIP_ID, 2)));
+
+        service.confirmPaidOrder("order-1", List.of(new ReservationLine(STANDARD_ID, 3), new ReservationLine(VIP_ID, 2)));
+        service.releaseSoldTicket("order-1", 101L, STANDARD_ID);
+
+        assertThat(vip.getSoldSeats()).isEqualTo(2);
+        assertThat(standard.getSoldSeats()).isEqualTo(2);
+        assertThat(standard.getReservedSeats()).isZero();
+        assertThat(reservations.get("order-1").getSoldQuantity()).isEqualTo(4);
+    }
+
+    @Test
+    void categoriesOfTwoDifferentEventsAreRefused() {
+        when(ticketCategoryRepository.findEventIdByCategoryId(99L)).thenReturn(Optional.of(2L));
+
+        ReservationOutcome outcome = service.reserve("order-1",
+                List.of(new ReservationLine(VIP_ID, 1), new ReservationLine(99L, 1)));
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(vip.getReservedSeats()).isZero();
+    }
+
+    @Test
+    void anOrderSavedBeforeTheLinesKeepsWorking() {
+        // Commande acceptée avec l'ancien modèle : catégorie et quantités sur la commande, sans ligne
+        vip.reserveSeats(2);
+        reservations.put("legacy", SeatReservation.builder()
+                .orderId("legacy").eventId(EVENT_ID).ticketCategoryId(VIP_ID)
+                .requestedQuantity(2).reservedQuantity(2).soldQuantity(0)
+                .status(SeatReservationStatus.ACCEPTED)
+                .build());
+
+        service.releaseReservedTicket("legacy", 100L);
+        service.confirmPaidOrder("legacy", 1);
+
+        assertThat(vip.getReservedSeats()).isZero();
+        assertThat(vip.getSoldSeats()).isEqualTo(1);
+        assertThat(reservations.get("legacy").getLines()).hasSize(1);
     }
 }

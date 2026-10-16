@@ -7,8 +7,12 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
-// Trace des places tenues pour une commande de ticket-service (une ligne par orderId).
+// Trace des places tenues pour une commande de ticket-service (une ligne par orderId, détaillée par
+// catégorie dans SeatReservationLine).
 // C'est elle qui rend la saga Kafka fiable : chaque message (réservé, payé, expiré, annulé) est
 // appliqué par rapport à ce que CETTE commande détient réellement, donc un message rejoué, en
 // retard ou incohérent ne peut jamais faire dériver les compteurs de la catégorie.
@@ -61,4 +65,40 @@ public class SeatReservation {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // Une ligne par catégorie de la commande. Les quantités ci-dessus sont les totaux de la commande ;
+    // ticketCategoryId n'est renseigné que pour une commande d'une seule catégorie.
+    @OneToMany(mappedBy = "reservation", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    private List<SeatReservationLine> lines = new ArrayList<>();
+
+    // Commandes acceptées avant l'ajout des lignes (une seule catégorie, portée par la commande) :
+    // leur ligne est créée au premier accès, avec les quantités de la commande
+    public List<SeatReservationLine> resolveLines() {
+        if (lines.isEmpty() && ticketCategoryId != null && status == SeatReservationStatus.ACCEPTED) {
+            lines.add(SeatReservationLine.builder()
+                    .reservation(this)
+                    .ticketCategoryId(ticketCategoryId)
+                    .requestedQuantity(requestedQuantity)
+                    .reservedQuantity(reservedQuantity)
+                    .soldQuantity(soldQuantity)
+                    .build());
+        }
+        return lines;
+    }
+
+    // Ligne d'une catégorie ; sans catégorie (ancien message), la seule ligne si la commande n'en a qu'une
+    public Optional<SeatReservationLine> lineFor(Long categoryId) {
+        List<SeatReservationLine> resolved = resolveLines();
+        if (categoryId == null) {
+            return resolved.size() == 1 ? Optional.of(resolved.get(0)) : Optional.empty();
+        }
+        return resolved.stream().filter(line -> categoryId.equals(line.getTicketCategoryId())).findFirst();
+    }
+
+    // Recalcule les totaux de la commande à partir de ses lignes
+    public void recalculateTotals() {
+        reservedQuantity = lines.stream().mapToInt(SeatReservationLine::getReservedQuantity).sum();
+        soldQuantity = lines.stream().mapToInt(SeatReservationLine::getSoldQuantity).sum();
+    }
 }
