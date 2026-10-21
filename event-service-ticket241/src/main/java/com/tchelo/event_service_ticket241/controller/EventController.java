@@ -1,7 +1,9 @@
 package com.tchelo.event_service_ticket241.controller;
 
+import com.tchelo.event_service_ticket241.dto.request.BatchPublishRequestDto;
 import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
+import com.tchelo.event_service_ticket241.dto.response.BatchPublishResultDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
 import com.tchelo.event_service_ticket241.dto.response.TicketCategoryResponseDto;
@@ -238,6 +240,20 @@ public class EventController {
         log.info("Événement publié avec succès");
 
         return ResponseEntity.ok(publishedEvent);
+    }
+
+    // Publication groupée de brouillons : mêmes règles que /{uuid}/publish, événement par événement ;
+    // la réponse détaille ce qui a été publié et pourquoi le reste a été refusé
+    @PostMapping("/publish-batch")
+    public ResponseEntity<BatchPublishResultDto> publishEvents(
+            @Valid @RequestBody BatchPublishRequestDto request,
+            @RequestHeader(value = "X-User-Id", required = true) String userId,
+            @RequestHeader(value = "X-User-Roles", required = true) String roles,
+            @RequestHeader(value = "X-User-Structure-Id", required = false) String structureId
+    ) {
+        log.info("Publication groupée de {} événement(s) par l'utilisateur {}", request.getEventUuids().size(), userId);
+
+        return ResponseEntity.ok(eventService.publishEvents(request.getEventUuids(), UserContext.of(userId, roles, structureId)));
     }
 
     @PostMapping("/{uuid}/cancel")

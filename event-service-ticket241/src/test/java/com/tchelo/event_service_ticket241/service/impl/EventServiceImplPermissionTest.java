@@ -28,6 +28,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -126,6 +127,35 @@ class EventServiceImplPermissionTest {
         structure.setIsVerified(true);
         assertThat(service.publishEvent("event-1", ADMIN_OF_STRUCTURE_1).getEventStatus())
                 .isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void batchPublishingAppliesTheSameRulesToEachEventWithoutBlockingTheOthers() {
+        structure.setIsVerified(true);
+        Event published = Event.builder().name("Déjà publié").structure(structure)
+                .eventStatus(EventStatus.PUBLISHED).startDate(LocalDateTime.now().plusDays(3)).build();
+        when(eventRepository.findByUuid("event-2")).thenReturn(Optional.of(published));
+        when(eventRepository.findByUuid("inconnu")).thenReturn(Optional.empty());
+
+        var result = service.publishEvents(List.of("event-1", "event-2", "inconnu", "event-1"), ADMIN_OF_STRUCTURE_1);
+
+        assertThat(result.getPublished()).isEqualTo(1);
+        assertThat(result.getRefused()).isEqualTo(2);
+        assertThat(result.getResults()).extracting("uuid", "published")
+                .containsExactly(tuple("event-1", true), tuple("event-2", false), tuple("inconnu", false));
+        assertThat(result.getResults().get(1).getMessage()).contains("brouillon");
+        assertThat(event.getEventStatus()).isEqualTo(EventStatus.PUBLISHED);
+    }
+
+    @Test
+    void batchPublishingRespectsTheRightsOfTheCaller() {
+        // Structure non vérifiée : son admin ne publie rien seul, un admin Ticket241 si
+        var refused = service.publishEvents(List.of("event-1"), ADMIN_OF_STRUCTURE_1);
+        assertThat(refused.getPublished()).isZero();
+        assertThat(refused.getResults().get(0).getMessage()).contains("vérifiée");
+        assertThat(event.getEventStatus()).isEqualTo(EventStatus.DRAFT);
+
+        assertThat(service.publishEvents(List.of("event-1"), ADMIN).getPublished()).isEqualTo(1);
     }
 
     @Test

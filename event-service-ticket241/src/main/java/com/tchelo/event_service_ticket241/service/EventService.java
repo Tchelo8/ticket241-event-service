@@ -2,11 +2,14 @@ package com.tchelo.event_service_ticket241.service;
 
 import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
+import com.tchelo.event_service_ticket241.dto.response.BatchPublishResultDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
 import com.tchelo.event_service_ticket241.security.UserContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+
+import java.util.List;
 
 public interface EventService {
 
@@ -52,6 +55,10 @@ public interface EventService {
 
     // Publie un événement (change le statut en PUBLISHED) ; structure vérifiée exigée hors admin
     EventResponseDto publishEvent(String uuid, UserContext user);
+
+    // Publie plusieurs brouillons : mêmes règles que publishEvent, appliquées à chaque événement.
+    // Un refus (droits, structure non vérifiée, statut) ne bloque pas les autres : il est détaillé dans la réponse.
+    BatchPublishResultDto publishEvents(List<String> uuids, UserContext user);
 
     // Annule un événement
     EventResponseDto cancelEvent(String uuid, String reason, UserContext user);

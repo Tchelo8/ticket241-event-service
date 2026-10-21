@@ -2,6 +2,7 @@ package com.tchelo.event_service_ticket241.service.impl;
 
 import com.tchelo.event_service_ticket241.dto.request.CreateEventDto;
 import com.tchelo.event_service_ticket241.dto.request.UpdateEventDto;
+import com.tchelo.event_service_ticket241.dto.response.BatchPublishResultDto;
 import com.tchelo.event_service_ticket241.dto.response.EventResponseDto;
 import com.tchelo.event_service_ticket241.dto.response.EventSummaryDto;
 import com.tchelo.event_service_ticket241.entity.Category;
@@ -30,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -397,6 +401,37 @@ public class EventServiceImpl implements EventService {
         log.info("Événement publié avec succès : UUID = {}", uuid);
 
         return eventMapper.toResponseDto(publishedEvent);
+    }
+
+    // Chaque événement passe par publishEvent (mêmes contrôles). Appel interne, donc sans proxy :
+    // un refus métier attrapé ici n'annule pas les publications déjà faites dans la transaction.
+    @Override
+    public BatchPublishResultDto publishEvents(List<String> uuids, UserContext user) {
+        log.info("Publication groupée de {} événement(s) par {}", uuids.size(), user.userId());
+
+        List<BatchPublishResultDto.Item> results = new ArrayList<>();
+        for (String uuid : new LinkedHashSet<>(uuids)) {
+            try {
+                EventResponseDto published = publishEvent(uuid, user);
+                results.add(BatchPublishResultDto.Item.builder()
+                        .uuid(uuid).name(published.getName()).published(true).message("Publié").build());
+            } catch (EventNotFoundException | UnauthorizedAccesException | InvalidEventDataException e) {
+                results.add(BatchPublishResultDto.Item.builder()
+                        .uuid(uuid)
+                        .name(eventRepository.findByUuid(uuid).map(Event::getName).orElse(null))
+                        .published(false)
+                        .message(e.getMessage())
+                        .build());
+            }
+        }
+
+        int published = (int) results.stream().filter(BatchPublishResultDto.Item::isPublished).count();
+        log.info("Publication groupée : {} publié(s), {} refusé(s)", published, results.size() - published);
+        return BatchPublishResultDto.builder()
+                .published(published)
+                .refused(results.size() - published)
+                .results(results)
+                .build();
     }
 
     @Override
